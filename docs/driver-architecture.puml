@@ -1,0 +1,70 @@
+@startuml
+!theme cerulean
+skinparam backgroundColor #FEFEFE
+skinparam componentStyle rectangle
+
+title Broadcom BCM4312 WiFi Driver Architecture (wl)
+
+package "Linux Kernel" {
+    [cfg80211] as cfg
+    [net_device] as netdev
+    [PCI Subsystem] as pci
+}
+
+package "wl Driver Module" {
+    package "CFG80211 Layer" <<Rectangle>> {
+        [wl_cfg80211_hybrid.c] as cfg_hybrid
+        note right of cfg_hybrid
+            Connection handling
+            - wl_cfg80211_connect()
+            - wl_cfg80211_join_ibss()
+            **FIXED:** Stack overflow
+            in flexible arrays
+        end note
+    }
+
+    package "Network Interface" <<Rectangle>> {
+        [wl_linux.c] as wl_linux
+        [wl_iw.c] as wl_iw
+    }
+
+    package "Hardware Abstraction" <<Rectangle>> {
+        [wlc_pub.h] as wlc
+        [wlioctl.h] as ioctl
+        note right of ioctl
+            IOCTL definitions
+            **FIXED:** [1] -> []
+            flexible arrays
+        end note
+    }
+}
+
+package "Hardware" {
+    [BCM4312 LP-PHY] as hw
+    note bottom of hw
+        802.11b/g only
+        Max: 54 Mbps
+        PCI ID: 14e4:4315
+    end note
+}
+
+' Relationships
+cfg --> cfg_hybrid : wiphy ops
+netdev --> wl_linux : netdev ops
+pci --> wl_linux : probe/remove
+
+cfg_hybrid --> wl_linux : dev_wlc_ioctl()
+cfg_hybrid --> ioctl : struct definitions
+wl_iw --> ioctl : WEXT support
+wl_linux --> wlc : hardware control
+
+wl_linux --> hw : DMA/PIO
+
+legend right
+    |= Issue |= Solution |
+    | FORTIFY_SOURCE memcpy | __builtin_memcpy |
+    | Stack corruption | Union buffer for flex arrays |
+    | UBSAN bounds | [1] -> [] syntax |
+endlegend
+
+@enduml

@@ -1,0 +1,39 @@
+--- Fix UBSAN array-index-out-of-bounds warnings
+--- Linux 6.5+ tightened UBSAN checking for fake flexible arrays
+--- Solution: Convert [1] arrays to proper C99 flexible arrays []
+--- Reference: https://gist.github.com/joanbm/9cd5fda1dcfab9a67b42cc6195b7b269
+
+--- a/src/include/bcmutils.h
++++ b/src/include/bcmutils.h
+@@ -XXX,7 +XXX,7 @@ typedef struct bcm_tlv {
+ 	uint8 id;
+ 	uint8 len;
+-	uint8 data[1];
++	uint8 data[];
+ } bcm_tlv_t;
+
+--- a/src/include/wlioctl.h
++++ b/src/include/wlioctl.h
+
+# Multiple changes needed in wlioctl.h:
+# - wl_bss_info_t bss_info[1] -> bss_info[]
+# - uint32 element[1] -> element[]
+# - pmkid_t pmkid[1] -> pmkid[]
+# - pmkid_cand_t pmkid_cand[1] -> pmkid_cand[]
+# - struct ether_addr ea[1] -> ea[]
+
+--- a/src/wl/sys/wl_cfg80211_hybrid.h
++++ b/src/wl/sys/wl_cfg80211_hybrid.h
+
+# Changes needed:
+# - u8 variable[0] -> u8 variable[]
+# - u8 frame_buf[1] -> u8 frame_buf[]
+# - s8 edata[1] -> s8 edata[]
+
+--- a/src/wl/sys/wl_iw.c
++++ b/src/wl/sys/wl_iw.c
+
+# Changes for PMKID arrays
+
+# NOTE: This patch requires manual application due to line number variations
+# Apply with: grep and sed for each pattern, or edit manually
