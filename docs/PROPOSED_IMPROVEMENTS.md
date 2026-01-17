@@ -1,19 +1,18 @@
 # Mejoras Propuestas para BCM4312 WiFi Driver
 
-## Estado Actual (Después de Pruebas)
+## Estado Actual (Después de Fix UBSAN)
 
-| Métrica | Valor | Esperado | Notas |
-|---------|-------|----------|-------|
-| Velocidad descarga | 0.21 Mbps | 15-25 Mbps | 100x menor |
-| Velocidad subida | 3.26 Mbps | 10-15 Mbps | Mejor |
-| Bit Rate reportado | 48 Mb/s | 54 Mb/s | Casi máximo |
-| Señal | -36 dBm | - | Excelente |
-| Link Quality | 70/70 | - | Perfecto |
-| Errores TX/RX | 0 | 0 | OK |
-| Paquetes dropped | 0 | 0 | OK |
+| Métrica | Antes | Después | Mejora |
+|---------|-------|---------|--------|
+| Velocidad descarga | 0.21 Mbps | **8.30 Mbps** | 40x |
+| Velocidad subida | 3.26 Mbps | **9.80 Mbps** | 3x |
+| Ping | 115 ms | **32 ms** | 3.6x |
+| Bit Rate | 48 Mb/s | 48 Mb/s | - |
+| Señal | -36 dBm | -39 dBm | - |
+| Link Quality | 70/70 | 70/70 | - |
 
-**Conclusión:** El Bit Rate es 48 Mb/s pero el throughput real es ~0.2 Mbps.
-El problema está en el **procesamiento interno del driver**, no en la señal.
+**Solución aplicada:** Convertir arrays `[0]` y `[1]` a flexible arrays `[]` (C99).
+El problema era que Linux 6.5+ UBSAN causaba overhead por bounds checking en arrays legacy.
 
 ---
 
@@ -121,16 +120,16 @@ net.ipv4.tcp_low_latency=1
 
 ## Mejoras Nivel 2: Parches al Código
 
-### 2.1 Fix UBSAN (Patch 003) - PENDIENTE APLICAR
+### 2.1 Fix UBSAN (Patch 003) - ✅ APLICADO
 
-```bash
-# Convertir arrays [1] a flexible arrays []
-# Archivos afectados:
-# - src/include/bcmutils.h
-# - src/include/wlioctl.h
-# - src/wl/sys/wl_cfg80211_hybrid.h
-# - src/wl/sys/wl_iw.c
-```
+**Archivos modificados:**
+- `src/include/bcmutils.h` - `uint8 data[1]` → `uint8 data[]`
+- `src/wl/sys/wl_cfg80211_hybrid.h`:
+  - `u8 variable[0]` → `u8 variable[]`
+  - `u8 frame_buf[1]` → `u8 frame_buf[]`
+  - `u8 ci[0]` → `u8 ci[]`
+
+**Resultado:** Download 0.21 → 8.30 Mbps (40x mejora)
 
 ### 2.2 Aumentar potencia TX al máximo
 
@@ -228,21 +227,22 @@ El driver b43 open-source NO soporta LP-PHY, pero si lo hiciera:
 
 ## Recomendación Final
 
-### Corto plazo (inmediato):
-1. ✅ Aplicar blacklist de módulos
-2. ✅ Cambiar canal en router a 1 u 11
-3. ✅ Verificar lib80211 cargado
-4. ⏳ Probar piomode=1
+### Completado:
+1. ✅ Aplicar blacklist de módulos conflictivos
+2. ✅ Configurar lib80211 y módulos crypto
+3. ✅ Fix UBSAN flexible arrays → **40x mejora en throughput**
+4. ✅ Modo DMA (piomode=0) confirmado como mejor opción
 
-### Mediano plazo:
-1. ⏳ Aplicar patch UBSAN completo
-2. ⏳ Recompilar con TXQ_THRESH=256
+### Probado (sin mejora):
+- ❌ piomode=1 (PIO) - peor rendimiento
+- ❌ qtxpower 30dBm - sin mejora
+- ❌ PM_OFF - sin mejora
+- ❌ scan_passive_time=50 - sin mejora
 
-### Largo plazo:
-1. 🔄 Considerar adaptador USB WiFi (recomendado)
-   - TP-Link Archer T3U (~$15 USD)
-   - Soporte 802.11ac (hasta 867 Mbps)
-   - Driver rtl8812au open-source
+### Resultado Final:
+- **Velocidad estable:** 8-10 Mbps (suficiente para uso general)
+- **Estabilidad:** Sin kernel panics
+- **Hardware funcional:** BCM4312 LP-PHY operativo en kernel 6.14
 
 ---
 

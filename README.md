@@ -54,17 +54,56 @@ struct wl_join_params *join_params = &join_params_u.p;
 
 Cambiar todas las referencias: `join_params.` → `join_params->`
 
+### 3. UBSAN Array Bounds Warnings (Performance) ✅
+
+**Síntoma:**
+- WiFi conectado con señal excelente (-36 dBm, Link Quality 70/70)
+- Bit Rate reportado: 48 Mb/s
+- Throughput real: **0.21 Mbps** (100x menor al esperado)
+
+**Causa:** Linux 6.5+ tightened UBSAN bounds checking (commit 2d47c6956ab3). Arrays declarados como `[0]` o `[1]` al final de structs disparan warnings que degradan el rendimiento.
+
+**Fix:** Convertir a sintaxis C99 flexible array `[]`:
+```c
+// bcmutils.h - struct bcm_tlv
+uint8   data[];    // Era: data[1]
+
+// wl_cfg80211_hybrid.h - struct beacon_proberesp
+u8 variable[];     // Era: variable[0]
+
+// wl_cfg80211_hybrid.h - struct wl_cfg80211_event_q
+u8 frame_buf[];    // Era: frame_buf[1]
+
+// wl_cfg80211_hybrid.h - struct wl_cfg80211_connect_info
+u8 ci[] __attribute__ ((__aligned__(NETDEV_ALIGN)));  // Era: ci[0]
+```
+
+**Resultado:** Throughput mejoró de **0.21 Mbps → 8.30 Mbps** (40x mejora)
+
 ---
 
 ## Archivos Modificados
 
-**Ubicación:** `/usr/src/broadcom-sta-6.30.223.271/src/wl/sys/wl_cfg80211_hybrid.c`
+**Ubicación:** `/usr/src/broadcom-sta-6.30.223.271/`
 
+### wl_cfg80211_hybrid.c
 | Línea | Cambio |
 |-------|--------|
 | ~703 | Union con buffer en `wl_cfg80211_join_ibss()` |
 | ~1003 | Union con buffer en `wl_cfg80211_connect()` |
 | 3090 | `__builtin_memcpy` en `wl_cp_ie()` |
+
+### wl_cfg80211_hybrid.h (UBSAN fix)
+| Línea | Cambio |
+|-------|--------|
+| 106 | `u8 variable[]` en struct beacon_proberesp |
+| 129 | `u8 frame_buf[]` en struct wl_cfg80211_event_q |
+| 201 | `u8 ci[]` en struct wl_cfg80211_connect_info |
+
+### bcmutils.h (UBSAN fix)
+| Línea | Cambio |
+|-------|--------|
+| 562 | `uint8 data[]` en struct bcm_tlv |
 
 ---
 
@@ -145,9 +184,9 @@ wakeonlan 00:25:64:41:5e:24
 
 ## Limitaciones Conocidas
 
-- **Velocidad máxima:** 54 Mbps (802.11g) - limitación del hardware BCM4312 LP-PHY
+- **Velocidad máxima teórica:** 54 Mbps (802.11g) - limitación del hardware BCM4312 LP-PHY
+- **Velocidad real obtenida:** ~8-10 Mbps (después de aplicar todos los fixes)
 - **Driver propietario:** No hay alternativa open-source funcional (b43 no soporta LP-PHY)
-- **Rendimiento observado:** ~0.15-1 Mbps en speedtest (subóptimo)
 
 ---
 

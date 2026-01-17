@@ -103,7 +103,7 @@ struct beacon_proberesp {
 	__le64 timestamp;
 	__le16 beacon_int;
 	__le16 capab_info;
-	u8 variable[0];
+	u8 variable[];
 } __attribute__ ((packed));
 
 struct wl_cfg80211_conf {
@@ -126,7 +126,7 @@ struct wl_cfg80211_bss_info {
 	u16 channel;
 	s16 rssi;
 	u16 frame_len;
-	u8 frame_buf[1];
+	u8 frame_buf[];
 };
 
 struct wl_cfg80211_scan_req {
@@ -198,7 +198,7 @@ struct wl_cfg80211_priv {
 	bool offloads;	
 	u8 *ioctl_buf;	
 	u8 *extra_buf;	
-	u8 ci[0] __attribute__ ((__aligned__(NETDEV_ALIGN)));
+	u8 ci[] __attribute__ ((__aligned__(NETDEV_ALIGN)));
 };
 
 #define wl_to_dev(w) (wiphy_dev(wl->wdev->wiphy))
