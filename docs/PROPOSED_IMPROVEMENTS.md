@@ -1,15 +1,59 @@
 # Mejoras Propuestas para BCM4312 WiFi Driver
 
-## Estado Actual
+## Estado Actual (Después de Pruebas)
 
-| Métrica | Valor | Esperado |
-|---------|-------|----------|
-| Velocidad descarga | 0.29 Mbps | 15-25 Mbps |
-| Velocidad subida | 1.50 Mbps | 10-15 Mbps |
-| Señal | -36 dBm | Excelente |
-| Link Quality | 70/70 | Perfecto |
+| Métrica | Valor | Esperado | Notas |
+|---------|-------|----------|-------|
+| Velocidad descarga | 0.21 Mbps | 15-25 Mbps | 100x menor |
+| Velocidad subida | 3.26 Mbps | 10-15 Mbps | Mejor |
+| Bit Rate reportado | 48 Mb/s | 54 Mb/s | Casi máximo |
+| Señal | -36 dBm | - | Excelente |
+| Link Quality | 70/70 | - | Perfecto |
+| Errores TX/RX | 0 | 0 | OK |
+| Paquetes dropped | 0 | 0 | OK |
 
-**Conclusión:** El problema NO es la señal, es el throughput del driver.
+**Conclusión:** El Bit Rate es 48 Mb/s pero el throughput real es ~0.2 Mbps.
+El problema está en el **procesamiento interno del driver**, no en la señal.
+
+---
+
+## Pruebas Realizadas
+
+| Configuración | Download | Upload | Resultado |
+|---------------|----------|--------|-----------|
+| piomode=1 (PIO) | 0.18 Mbps | 0.00 Mbps | ❌ Peor |
+| piomode=0 (DMA) | 0.21 Mbps | 3.26 Mbps | ⚠️ Igual |
+| iwconfig rate 54M | N/A | N/A | ❌ No soportado |
+| iwconfig txpower 20dBm | - | - | Sin efecto |
+
+---
+
+## Análisis del Código
+
+### Configuraciones actuales del driver (wl_linux.c)
+
+```c
+wlc_iovar_setint(wl->wlc, "mpc", 0);           // MPC desactivado (nompc=1)
+wlc_iovar_setint(wl->wlc, "scan_passive_time", 170);
+wlc_iovar_setint(wl->wlc, "qtxpower", 23 * 4); // 23 dBm (max 31.75)
+wlc_set(wl->wlc, WLC_SET_PM, PM_FAST);         // Power Management
+```
+
+### Modo PIO vs DMA
+
+| Modo | Descripción | Uso |
+|------|-------------|-----|
+| **DMA** | Direct Memory Access - El hardware transfiere datos directamente a memoria | Más rápido, default |
+| **PIO** | Programmed I/O - La CPU maneja cada transferencia | Más estable en HW antiguo |
+
+El BCM4312 LP-PHY funciona mejor con DMA (probado).
+
+### Limitaciones encontradas en el código
+
+1. **wl_txq_thresh**: Cola TX limitada, pero 512 ya es alto
+2. **Tasklets legacy**: El driver usa tasklets en lugar de NAPI moderno
+3. **Sin control de bit rate**: `iwconfig rate` no funciona (no implementado)
+4. **Firmware embebido**: No se puede actualizar sin recompilar
 
 ---
 
@@ -88,24 +132,66 @@ net.ipv4.tcp_low_latency=1
 # - src/wl/sys/wl_iw.c
 ```
 
-### 2.2 Aumentar TXQ_THRESH por defecto
+### 2.2 Aumentar potencia TX al máximo
 
-En `wl_linux.c` línea 199:
+En `wl_linux.c` línea 639:
 ```c
 // Actual:
-#define WL_TXQ_THRESH   0
+wlc_iovar_setint(wl->wlc, "qtxpower", 23 * 4);  // 23 dBm
 
 // Propuesto:
-#define WL_TXQ_THRESH   256
+wlc_iovar_setint(wl->wlc, "qtxpower", 30 * 4);  // 30 dBm (cerca del máximo 31.75)
 ```
 
-**Razón:** Permite encolar más paquetes antes de que el kernel bloquee.
+### 2.3 Deshabilitar Power Management completamente
 
-### 2.3 Optimizar tasklet scheduling
+En `wl_linux.c` línea 723:
+```c
+// Actual:
+wlc_set(wl->wlc, WLC_SET_PM, PM_FAST);
 
-El driver actual usa tasklets legacy. Una mejora sería:
-- Implementar NAPI para mejor manejo de interrupciones
-- **Complejidad:** Alta - requiere reescribir el path de RX
+// Propuesto:
+wlc_set(wl->wlc, WLC_SET_PM, PM_OFF);  // 0 = completamente desactivado
+```
+
+### 2.4 Reducir scan_passive_time
+
+En `wl_linux.c` línea 633:
+```c
+// Actual:
+wlc_iovar_setint(wl->wlc, "scan_passive_time", 170);
+
+// Propuesto:
+wlc_iovar_setint(wl->wlc, "scan_passive_time", 50);  // Escaneo más rápido
+```
+
+### 2.5 Implementar NAPI (Complejidad Alta)
+
+El driver usa tasklets legacy para el procesamiento de paquetes:
+```c
+// Actual (wl_linux.c:664):
+tasklet_init(&wl->tasklet, wl_dpc, (ulong)wl);
+tasklet_init(&wl->tx_tasklet, wl_tx_tasklet, (ulong)wl);
+```
+
+NAPI (New API) es más eficiente para alto throughput pero requiere:
+- Reescribir wl_dpc() para usar polling
+- Modificar el manejo de interrupciones
+- **Complejidad:** Muy alta - cambios estructurales
+
+### 2.6 Optimizar cola TX
+
+En `wl_linux.c` líneas 2236-2240, cuando la cola está llena se descarta el paquete:
+```c
+if ((wl_txq_thresh > 0) && (wl->txq_cnt >= wl_txq_thresh)) {
+    PKTFRMNATIVE(wl->osh, skb);
+    PKTCFREE(wl->osh, skb, TRUE);  // Se descarta silenciosamente
+    TXQ_UNLOCK(wl);
+    return 0;
+}
+```
+
+**Propuesta:** Implementar backpressure hacia el kernel en lugar de descartar
 
 ---
 
