@@ -1,0 +1,13 @@
+--- a/src/wl/sys/wl_cfg80211_hybrid.c
++++ b/src/wl/sys/wl_cfg80211_hybrid.c
+@@ -3077,7 +3077,9 @@ static s32 wl_cp_ie(struct wl_cfg80211_priv *wl, u8 *dst, u16 dst_size)
+ 		WL_ERR(("dst_size is not enough\n"));
+ 		return -ENOSPC;
+ 	}
+-	memcpy(dst, &ie->buf[0], ie->offset);
++	if (ie->offset > 0 && ie->offset <= WL_TLV_INFO_MAX) {
++		__builtin_memcpy(dst, &ie->buf[0], ie->offset);
++	}
+
+ 	return err;
+ }

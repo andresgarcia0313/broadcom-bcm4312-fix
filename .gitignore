@@ -1,0 +1,22 @@
+# Backups
+*.bak
+*.bak2
+*.bak3
+*.orig
+
+# Build artifacts
+*.o
+*.ko
+*.mod.c
+*.mod
+modules.order
+Module.symvers
+.tmp_versions/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

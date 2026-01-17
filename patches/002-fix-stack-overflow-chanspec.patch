@@ -1,0 +1,33 @@
+--- a/src/wl/sys/wl_cfg80211_hybrid.c
++++ b/src/wl/sys/wl_cfg80211_hybrid.c
+@@ -700,8 +700,13 @@ static s32
+ wl_cfg80211_join_ibss(struct wiphy *wiphy, struct net_device *dev,
+                       struct cfg80211_ibss_params *params)
+ {
+-	struct wl_join_params join_params;
+-	size_t join_params_size;
++	/* Buffer con espacio extra para flexible array chanspec_list */
++	union {
++		struct wl_join_params p;
++		u8 buf[sizeof(struct wl_join_params) + sizeof(chanspec_t) * 2];
++	} join_params_u;
++	struct wl_join_params *join_params = &join_params_u.p;
++	size_t join_params_size;
+
+@@ -1000,8 +1005,13 @@ static s32
+ wl_cfg80211_connect(struct wiphy *wiphy, struct net_device *dev,
+                     struct cfg80211_connect_params *sme)
+ {
+ 	struct wl_cfg80211_priv *wl = wiphy_to_wl(wiphy);
+-	struct wl_join_params join_params;
+-	size_t join_params_size;
++	/* Buffer con espacio extra para flexible array chanspec_list */
++	union {
++		struct wl_join_params p;
++		u8 buf[sizeof(struct wl_join_params) + sizeof(chanspec_t) * 2];
++	} join_params_u;
++	struct wl_join_params *join_params = &join_params_u.p;
++	size_t join_params_size;
+
+# Cambiar todas las referencias de join_params. a join_params->
+# y &join_params a join_params en las funciones afectadas
