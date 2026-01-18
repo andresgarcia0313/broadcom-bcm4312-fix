@@ -1,18 +1,16 @@
 # Mejoras Propuestas para BCM4312 WiFi Driver
 
-## Estado Actual (Después de Fix UBSAN)
+## Estado Actual (Pruebas Finales 2026-01-17)
 
-| Métrica | Antes | Después | Mejora |
-|---------|-------|---------|--------|
-| Velocidad descarga | 0.21 Mbps | **8.30 Mbps** | 40x |
-| Velocidad subida | 3.26 Mbps | **9.80 Mbps** | 3x |
-| Ping | 115 ms | **32 ms** | 3.6x |
-| Bit Rate | 48 Mb/s | 48 Mb/s | - |
-| Señal | -36 dBm | -39 dBm | - |
-| Link Quality | 70/70 | 70/70 | - |
+| Métrica | Valor | Notas |
+|---------|-------|-------|
+| Velocidad descarga | **~0.5 Mbps** | Limitación RX del LP-PHY |
+| Velocidad subida | **~19 Mbps** | Cercano al máximo teórico |
+| Ping | ~45-60 ms | Aceptable |
+| Señal | 100% | Excelente |
+| Estabilidad | ✅ | Sin kernel panics |
 
-**Solución aplicada:** Convertir arrays `[0]` y `[1]` a flexible arrays `[]` (C99).
-El problema era que Linux 6.5+ UBSAN causaba overhead por bounds checking en arrays legacy.
+**Conclusión:** El chip BCM4312 LP-PHY tiene una limitación de hardware/firmware en la ruta de recepción (RX). El upload funciona bien (~19 Mbps, cerca del máximo 802.11g de 54 Mbps con overhead) pero el download está limitado a ~0.5 Mbps. Esta es una limitación conocida del LP-PHY que no puede resolverse solo con cambios de software.
 
 ---
 
@@ -228,21 +226,31 @@ El driver b43 open-source NO soporta LP-PHY, pero si lo hiciera:
 ## Recomendación Final
 
 ### Completado:
-1. ✅ Aplicar blacklist de módulos conflictivos
-2. ✅ Configurar lib80211 y módulos crypto
-3. ✅ Fix UBSAN flexible arrays → **40x mejora en throughput**
-4. ✅ Modo DMA (piomode=0) confirmado como mejor opción
+1. ✅ Fix FORTIFY_SOURCE (memcpy) - Sin warnings
+2. ✅ Fix Stack Corruption (unions) - Sin kernel panics
+3. ✅ Fix UBSAN flexible arrays - Sin errores bounds
+4. ✅ Blacklist de módulos conflictivos
+5. ✅ Configurar lib80211 y módulos crypto
+6. ✅ Modo DMA (piomode=0) confirmado como mejor opción
 
-### Probado (sin mejora):
+### Probado (sin mejora en RX):
 - ❌ piomode=1 (PIO) - peor rendimiento
 - ❌ qtxpower 30dBm - sin mejora
 - ❌ PM_OFF - sin mejora
 - ❌ scan_passive_time=50 - sin mejora
+- ❌ -fno-sanitize=bounds - sin mejora
 
 ### Resultado Final:
-- **Velocidad estable:** 8-10 Mbps (suficiente para uso general)
-- **Estabilidad:** Sin kernel panics
+- **Upload:** ~19 Mbps (excelente para 802.11g)
+- **Download:** ~0.5 Mbps (limitación LP-PHY)
+- **Estabilidad:** Sin kernel panics ni errores UBSAN
 - **Hardware funcional:** BCM4312 LP-PHY operativo en kernel 6.14
+
+### Limitación Identificada:
+El BCM4312 LP-PHY tiene un problema conocido en la ruta de recepción (RX) que limita severamente el download. Esto parece ser una limitación del firmware propietario embebido, no del wrapper del kernel. Para mejorar esto se necesitaría:
+1. Ingeniería inversa del blob binario (complejo, posiblemente ilegal)
+2. Acceso al código fuente de Broadcom (no disponible públicamente)
+3. Firmware alternativo (no existe para LP-PHY)
 
 ---
 

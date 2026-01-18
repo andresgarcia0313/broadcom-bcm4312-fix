@@ -184,9 +184,11 @@ wakeonlan 00:25:64:41:5e:24
 
 ## Limitaciones Conocidas
 
-- **Velocidad máxima teórica:** 54 Mbps (802.11g) - limitación del hardware BCM4312 LP-PHY
-- **Velocidad real obtenida:** ~8-10 Mbps (después de aplicar todos los fixes)
+- **Velocidad máxima teórica:** 54 Mbps (802.11g)
+- **Upload real:** ~19 Mbps (excelente)
+- **Download real:** ~0.5 Mbps (limitación del LP-PHY en ruta RX)
 - **Driver propietario:** No hay alternativa open-source funcional (b43 no soporta LP-PHY)
+- **Firmware embebido:** Blob binario de Broadcom, no modificable sin ingeniería inversa
 
 ---
 
